@@ -4,3 +4,4 @@ version = "0.1.0"
 authors = ["Gaelan D'costa <gdcosta@gmail.com>"]
 
 [dependencies]
+mio = "0.5.1"
