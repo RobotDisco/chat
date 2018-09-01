@@ -5,3 +5,4 @@ authors = ["Gaelan D'costa <gdcosta@gmail.com>"]
 
 [dependencies]
 mio = "0.5.1"
+http-muncher = "0.2.0"
