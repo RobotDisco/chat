@@ -50,10 +50,20 @@ impl ParserHandler for HttpParser {
     }
 }
 
+#[derive(PartialEq)]
+enum ClientState {
+    AwaitingHandshake,
+    HandshakeResponse,
+    Connected
+}
+
 struct WebSocketClient {
     socket: TcpStream,
     http_parser: Parser<HttpParser>,
-    headers: Rc<RefCell<HashMap<String, String>>>
+    headers: Rc<RefCell<HashMap<String, String>>>,
+    interest: EventSet,
+
+    state: ClientState
 }
 
 impl WebSocketClient {
@@ -71,8 +81,13 @@ impl WebSocketClient {
                 Ok(Some(len)) => {
                     self.http_parser.parse(&buf[0..len]);
                     if self.http_parser.is_upgrade() {
-                        // ...
-                    break;}
+                        self.state = ClientState::HandshakeResponse;
+
+                        self.interest.remove(EventSet::readable());
+                        self.interest.insert(EventSet::writable());
+
+                        break;
+                    }
                 }
             }
         }
@@ -93,7 +108,13 @@ impl WebSocketClient {
 
                 // ... and the second clone to write new headers to it:
                 headers: headers.clone()
-            })
+            }),
+
+            // Initial events that interest us
+            interest: EventSet::readable(),
+
+            // Initial state
+            state: ClientState::AwaitingHandshake
         }
     }
 }
@@ -140,7 +161,8 @@ impl Handler for WebSocketServer {
             token => {
                 let mut client = self.clients.get_mut(&token).unwrap();
                 client.read();
-                event_loop.reregister(&client.socket, token, EventSet::readable(),
+                event_loop.reregister(&client.socket, token,
+                                      client.interest,
                                       PollOpt::edge() | PollOpt::oneshot()).unwrap();
             }
         }
