@@ -5,16 +5,55 @@ use mio::*;
 extern crate http_muncher;
 use http_muncher::{Parser, ParserHandler};
 
+extern crate sha1;
+extern crate rustc_serialize;
+
+use rustc_serialize::base64::{ToBase64, STANDARD};
+
+fn gen_key(key: &String) -> String {
+    let mut m = sha1::Sha1::new();
+    let mut buf = [0u8; 20];
+
+    m.update(key.as_bytes());
+    m.update("258EAFA5-E914-47DA-95CA-C5AB0DC85B11".as_bytes());
+
+    m.output(&mut buf);
+
+    return buf.to_base64(STANDARD);
+}
+
 use std::net::SocketAddr;
 use std::collections::HashMap;
 
+use std::cell::RefCell;
+use std::rc::Rc;
 
-struct HttpParser;
-impl ParserHandler for HttpParser { }
+struct HttpParser {
+    current_key: Option<String>,
+    headers: Rc<RefCell<HashMap<String, String>>>
+}
+impl ParserHandler for HttpParser {
+    fn on_header_field(&mut self, s: &[u8]) -> bool {
+        self.current_key = Some(std::str::from_utf8(s).unwrap().to_string());
+        true
+    }
+
+    fn on_header_value(&mut self, s: &[u8]) -> bool {
+        self.headers.borrow_mut()
+            .insert(self.current_key.clone().unwrap(),
+                    std::str::from_utf8(s).unwrap().to_string());
+        true
+    }
+
+    fn on_headers_complete(&mut self) -> bool {
+        false
+    }
+}
 
 struct WebSocketClient {
     socket: TcpStream,
-    http_parser: Parser<HttpParser>
+    http_parser: Parser<HttpParser>,
+    headers: Rc<RefCell<HashMap<String, String>>>
 }
 
 impl WebSocketClient {
@@ -40,9 +79,21 @@ impl WebSocketClient {
     }
 
     fn new(socket: TcpStream) -> WebSocketClient {
+        let headers = Rc::new(RefCell::new(HashMap::new()));
+
         WebSocketClient {
             socket: socket,
-            http_parser: Parser::request(HttpParser)
+
+            // We're making a first clone of the `headers` variable
+            // to read its contents:
+            headers: headers.clone(),
+
+            http_parser: Parser::request(HttpParser {
+                current_key: None,
+
+                // ... and the second clone to write new headers to it:
+                headers: headers.clone()
+            })
         }
     }
 }
