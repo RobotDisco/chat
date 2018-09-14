@@ -57,6 +57,8 @@ enum ClientState {
     Connected
 }
 
+use std::fmt;
+
 struct WebSocketClient {
     socket: TcpStream,
     http_parser: Parser<HttpParser>,
@@ -91,6 +93,33 @@ impl WebSocketClient {
                 }
             }
         }
+    }
+
+    fn write(&mut self) {
+        // Get the headers HashMap from the Rc<RefCell<...>> wrapper:
+        let headers = self.headers.borrow();
+
+        // Find the header that interests us, and generate key from its value:
+        let response_key = gen_key(&headers.get("Sec-WebSocket-Key").unwrap());
+
+        // We're using a special function to format the string.
+        // Other languages have different tactics, but in Rust it's performed
+        // at the compile time with the power of macros. We'll discuss it in
+        // in the next part sometime.
+        let response = fmt::format(format_args!("HTTP/1.1 101 Switching Protocols\r\n\
+                                                 Connection: Upgrade\r\n\
+                                                 Sec-WebSocket-Accept: {}\r\n\
+                                                 Upgrade: websocket\r\n\r\n",
+                                                response_key));
+
+        // Write response to socket
+        self.socket.try_write(response.as_bytes()).unwrap();
+
+        self.state = ClientState::Connected;
+
+        // Change the interest back to `readable()`:
+        self.interest.remove(EventSet::writable());
+        self.interest.insert(EventSet::readable());
     }
 
     fn new(socket: TcpStream) -> WebSocketClient {
@@ -137,34 +166,42 @@ impl Handler for WebSocketServer {
     type Message = ();
 
     fn ready(&mut self, event_loop: &mut EventLoop<WebSocketServer>,
-             token: Token, _events: EventSet)
+             token: Token, events: EventSet)
     {
-        match token {
-            SERVER_TOKEN => {
-                let client_socket = match self.socket.accept() {
-                    Err(e) => {
-                        println!("Accept error: {}", e);
-                        return;
-                    },
-                    Ok(None) => unreachable!("Accept has returned 'None"),
-                    Ok(Some((sock, _addr))) => sock
-                };
+        if events.is_readable() {
+            match token {
+                SERVER_TOKEN => {
+                    let client_socket = match self.socket.accept() {
+                        Err(e) => {
+                            println!("Accept error: {}", e);
+                            return;
+                        },
+                        Ok(None) => unreachable!("Accept has returned 'None"),
+                        Ok(Some((sock, _addr))) => sock
+                    };
 
-                self.token_counter += 1;
-                let new_token = Token(self.token_counter);
+                    self.token_counter += 1;
+                    let new_token = Token(self.token_counter);
 
-                self.clients.insert(new_token, WebSocketClient::new(client_socket));
-                event_loop.register(&self.clients[&new_token].socket,
-                                    new_token, EventSet::readable(),
-                                    PollOpt::edge() | PollOpt::oneshot()).unwrap();
-            },
-            token => {
-                let mut client = self.clients.get_mut(&token).unwrap();
-                client.read();
-                event_loop.reregister(&client.socket, token,
-                                      client.interest,
-                                      PollOpt::edge() | PollOpt::oneshot()).unwrap();
+                    self.clients.insert(new_token, WebSocketClient::new(client_socket));
+                    event_loop.register(&self.clients[&new_token].socket,
+                                        new_token, EventSet::readable(),
+                                        PollOpt::edge() | PollOpt::oneshot()).unwrap();
+                },
+                token => {
+                    let mut client = self.clients.get_mut(&token).unwrap();
+                    client.read();
+                    event_loop.reregister(&client.socket, token, client.interest,
+                                          PollOpt::edge() | PollOpt::oneshot()).unwrap();
+                }
             }
+        }
+
+        if events.is_writable() {
+                let client = self.clients.get_mut(&token).unwrap();
+                client.write();
+                event_loop.reregister(&client.socket, token, client.interest,
+                                      PollOpt::edge() | PollOpt::oneshot()).unwrap();
         }
     }
 }
