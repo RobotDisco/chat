@@ -1,0 +1,18 @@
+* Rust Chat app
+(tutorial websocket app from the tutorial  https://nbaksalyar.github.io/2015/07/10/writing-chat-in-rust.html)
+** What it does
+If you launch it, and then use a javascript app to connect to it, it will establish a connection!
+
+#+BEGIN_SRC javascript
+ws = new WebSocket('ws://127.0.0.1:10000');
+
+if (ws.readyState == WebSocket.OPEN) {
+    console.log('Connection is successful');
+}
+#+END_SRC
+** How to run it
+ 1. Have the rust ecosystem installed on your computer (see https://www.rust-lang.org/en-US/install.html)
+ 2. Check out the code src_sh{git clone https://github.com/robotdisco/rust_chat}
+ 3. src_rust{cargo build}
+ 4. src_rust{cargo run}
+ 5. Launch a browser and use its dev tools to run the code block from the previous section! Enjoy :)
