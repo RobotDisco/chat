@@ -13,6 +13,6 @@ if (ws.readyState == WebSocket.OPEN) {
 ** How to run it
  1. Have the rust ecosystem installed on your computer (see https://www.rust-lang.org/en-US/install.html)
  2. Check out the code src_sh{git clone https://github.com/robotdisco/rust_chat}
- 3. src_rust{cargo build}
- 4. src_rust{cargo run}
+ 3. ~cargo build~
+ 4. ~cargo run~
  5. Launch a browser and use its dev tools to run the code block from the previous section! Enjoy :)
